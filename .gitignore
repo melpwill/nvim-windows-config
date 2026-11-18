@@ -1,0 +1,9 @@
+# Editor temporary files
+*.swp
+*.swo
+*~
+*.tmp
+
+# Platform-local files
+Thumbs.db
+.DS_Store

@@ -65,6 +65,8 @@ opt.laststatus = 2
 opt.wildmenu = true
 opt.wildmode = { "list:longest" }
 opt.termguicolors = true
+-- ObsidianのMarkdown表示機能（リンクや装飾のconceal）を有効化する
+opt.conceallevel = 2
 opt.signcolumn = "yes"
 opt.splitright = true
 opt.splitbelow = true
@@ -395,6 +397,48 @@ vim.api.nvim_create_user_command("NotesOpen", function()
   vim.cmd("edit " .. vim.fn.fnameescape(home))
 end, { desc = "Google Driveのホームノートを開く" })
 
+-- ノートツリーに切り替える前のプロジェクトディレクトリを保持する
+-- vim.fn.getcwd()はnvim-treeのルート切り替えでは変更しない
+local project_tree_directory = vim.fs.normalize(vim.fn.getcwd())
+
+local function open_tree_at(directory)
+  -- ツリーが表示中でも、change_rootで確実に表示先を切り替える
+  local tree = require("nvim-tree.api").tree
+  tree.open()
+  tree.change_root(directory)
+end
+
+-- 作業ディレクトリを変更せず、NotesVaultをファイルツリーのルートとして開く
+-- nvim-treeのツリーは共用のため、通常のファイルツリーとは表示先を切り替える
+vim.api.nvim_create_user_command("NotesTree", function()
+  local directory = get_notes_directory()
+  if not directory then
+    return
+  end
+
+  local current_directory = vim.fs.normalize(vim.fn.getcwd())
+  if current_directory ~= directory and vim.fn.isdirectory(current_directory) == 1 then
+    project_tree_directory = current_directory
+  end
+
+  open_tree_at(directory)
+end, { desc = "Google Driveのノートをツリーで開く" })
+
+-- ノートツリーへ切り替える前に開いていた開発プロジェクトのツリーへ戻る
+vim.api.nvim_create_user_command("ProjectTree", function()
+  local directory = project_tree_directory
+  if directory == notes_directory or vim.fn.isdirectory(directory) ~= 1 then
+    directory = vim.fs.normalize(vim.fn.getcwd())
+  end
+
+  if directory == notes_directory or vim.fn.isdirectory(directory) ~= 1 then
+    vim.notify("プロジェクトフォルダーが見つかりません。作業ディレクトリを確認してください。", vim.log.levels.WARN)
+    return
+  end
+
+  open_tree_at(directory)
+end, { desc = "開発プロジェクトのファイルツリーに戻る" })
+
 vim.api.nvim_create_user_command("NotesStatus", function()
   print("NVIM_NOTES_DIR: " .. (notes_directory ~= "" and notes_directory or "(未設定)"))
   print("ノートフォルダー: " .. (vim.fn.isdirectory(notes_directory) == 1 and "利用可能" or "未検出"))
@@ -403,6 +447,8 @@ vim.api.nvim_create_user_command("NotesStatus", function()
 end, { desc = "Google Driveノートの設定と依存ツールを確認する" })
 
 map("n", "<leader>no", "<Cmd>NotesOpen<CR>", { desc = "Google Driveのノートを開く" })
+map("n", "<leader>ne", "<Cmd>NotesTree<CR>", { desc = "Google Driveのノート一覧をツリーで開く" })
+map("n", "<leader>er", "<Cmd>ProjectTree<CR>", { desc = "開発プロジェクトのファイルツリーに戻る" })
 
 require("lazy").setup({
   { "tomasr/molokai", lazy = false, priority = 1000,
@@ -519,6 +565,7 @@ require("lazy").setup({
   -- VSCodeのクイックオープンとファイル横断検索に相当する機能
   {
     "nvim-telescope/telescope.nvim",
+    -- Neovim 0.11.3～0.11.6は互換性のある旧系列を使用する
     version = vim.fn.has("nvim-0.11.7") == 1 and "0.2.*" or "0.1.9",
     cmd = "Telescope",
     dependencies = { "nvim-lua/plenary.nvim" },
@@ -742,6 +789,7 @@ require("lazy").setup({
     lazy = false,
     dependencies = { "nvim-telescope/telescope.nvim" },
     opts = {
+      -- Copilot LSPを利用した次の編集候補は導入しない（追加契約を前提にしない）
       nes = { enabled = false },
       cli = {
         -- 外部CLIによる保存済みファイルの更新をNeovim側へ通知する
